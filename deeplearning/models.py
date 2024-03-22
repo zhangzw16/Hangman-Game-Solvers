@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 import torch.optim as optim
-
+import os
 
 
 class generic_model(nn.Module):
@@ -154,7 +154,7 @@ class RNN(generic_model):
             x = self.embedding(x)
             
         batch_size, seq_len, _ = x.size()
-        x = torch.nn.utils.rnn.pack_padded_sequence(x, x_lens, batch_first=True, enforce_sorted=False)
+        x = torch.nn.utils.rnn.pack_padded_sequence(x, x_lens.cpu(), batch_first=True, enforce_sorted=False)
         # now run through RNN
         output, hidden = self.rnn(x)
         hidden = hidden.view(self.num_layers, 2, -1, self.hidden_dim)

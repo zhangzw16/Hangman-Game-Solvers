@@ -3,7 +3,7 @@ models: 'models/' # for storing models
 plots: 'plots/' # for plots
 pickle: 'pickle/' # pickle dumps root path
 
-cuda: True #whether to use NVIDIA cuda
+cuda: False #whether to use NVIDIA cuda
     
 test_per_epoch: 0 #test per epoch i.e. how many times in ONE epoch
 test_every_epoch: 50 #after how many epochs
@@ -13,7 +13,7 @@ plot_every: 25 #save plots for test loss/train loss/accuracy
 
 resume: True #resume training from saved model
 
-lr: 0.0005 #learning rate
+lr: 0.001 #learning rate
 
 drop_uniform: False #whether dropping of character sets is independent of set size
 reset_after: 400 #generate a new random dataset after these manh epochs
@@ -28,5 +28,5 @@ output_mid_features: 256 #number of neurons in hidden layer after RNN
 miss_linear_dim: 256 #miss chars are projected to this dimension using a simple linear layer
 num_layers: 2 #number of layers in RNN
 dropout: 0.3 #dropout
-batch_size: 1 #batch size for training and testing
+batch_size: 4000 #batch size for training and testing
 epochs: 3000 #total no. of epochs to train

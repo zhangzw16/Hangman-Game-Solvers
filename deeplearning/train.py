@@ -9,12 +9,12 @@ import numpy as np
 import os
 import datetime
 import pickle
-from deeplearning.models import RNN
-from dataloader import dataloader
-from dataloader import encoded_to_string
+from .models import RNN
+from .dataloader import dataloader
+from .dataloader import encoded_to_string
 
 #load config file
-with open("config.yaml", 'r') as stream:
+with open("./deeplearning/config.yaml", 'r') as stream:
 	try:
 		config = yaml.safe_load(stream)
 	except yaml.YAMLError as exc:
@@ -64,6 +64,8 @@ class dl_model():
 			# dataloader which returns batches of data
 			self.train_loader = dataloader('train', self.config)
 			self.test_loader = dataloader('test', self.config)
+			print("len of train_loader:", len(self.train_loader))
+			print("len of test_loader:", len(self.test_loader))
 			#declare model
 			self.model = RNN(self.config)
 
@@ -274,13 +276,17 @@ class dl_model():
 
 		return test_loss
 
-	def predict(self, string, misses, char_to_id):
+	def predict(self, string, misses):
 		"""
 		called during inference
 		:param string: word with predicted characters and blanks at remaining places
 		:param misses: list of characters which were predicted but game feedback indicated that they are not present
 		:param char_to_id: mapping from characters to id
 		"""
+		# a -> 0
+		char_to_id = {chr(97+x): x for x in range(26)}
+		#  "BLANK": 26
+		char_to_id['*'] = len(char_to_id)
 
 		id_to_char = {v:k for k,v in char_to_id.items()}
 

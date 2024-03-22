@@ -131,7 +131,7 @@ class dataloader:
 		if mode == 'train':
 			filename = config['dataset'] + "words_250000_train.txt"
 		else:
-			filename = config['dataset'] + "valid.txt"
+			filename = config['dataset'] + "words_250000_train.txt"
 			# raise NotImplementedError
 
 		#if already dumped, load the database from dumped pickle file
