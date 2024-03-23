@@ -7,18 +7,12 @@ import yaml
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-import datetime
-import pickle
-from .models import RNN
-from .dataloader import dataloader
-from .dataloader import encoded_to_string
 
-#load config file
-with open("./deeplearning/config.yaml", 'r') as stream:
-	try:
-		config = yaml.safe_load(stream)
-	except yaml.YAMLError as exc:
-		print(exc)
+from tqdm import tqdm
+
+from .models import RNN
+from .dataloader import WordDataLoader as dataloader
+
 
 #class responsible for training, testing and inference
 class dl_model():
@@ -26,7 +20,11 @@ class dl_model():
 	def __init__(self, mode):
 
 		# Read config fielewhich contains parameters
-		self.config = config
+		with open("./deeplearning/config.yaml", 'r') as stream:
+			try:
+				self.config = yaml.safe_load(stream)
+			except yaml.YAMLError as exc:
+				print(exc)
 		self.mode = mode
 
 		# Architecture name decides prefix for storing models and plots
@@ -36,8 +34,8 @@ class dl_model():
 
 		print("Architecture:", self.arch_name)
 		# Change paths for storing models
-		self.config['models'] = self.config['models'].split('/')[0] + '_' + self.arch_name + '/'
-		self.config['plots'] = self.config['plots'].split('/')[0] + '_' + self.arch_name + '/'
+		self.config['models'] = os.path.join(self.config['models'], self.arch_name)
+		self.config['plots'] = os.path.join(self.config['plots'], self.arch_name)
 
 		# Make folders if DNE
 		if not os.path.exists(self.config['models']):
@@ -64,8 +62,6 @@ class dl_model():
 			# dataloader which returns batches of data
 			self.train_loader = dataloader('train', self.config)
 			self.test_loader = dataloader('test', self.config)
-			print("len of train_loader:", len(self.train_loader))
-			print("len of test_loader:", len(self.test_loader))
 			#declare model
 			self.model = RNN(self.config)
 
@@ -87,7 +83,7 @@ class dl_model():
 
 		# load best model for testing/inference
 		elif self.mode == 'test' or mode == 'test_one':
-			self.model.load_model(mode, self.config['rnn'], self.model.num_layers, self.model.hidden_dim)
+			self.model.load_model(mode, self.config['rnn'], self.model.num_layers, self.model.hidden_dim, epoch=None)
 
 		#whether using embeddings
 		if self.config['use_embedding']:
@@ -98,8 +94,6 @@ class dl_model():
 	# Train the model
 	def train(self):
 
-		print("Starting training at t =", datetime.datetime.now())
-		print('Batches per epoch:', len(self.train_loader))
 		self.model.train()
 
 		# when to print losses during the epoch
@@ -111,121 +105,110 @@ class dl_model():
 
 		for epoch in range(self.start_epoch, self.total_epochs + 1):
 
-			try:
+			epoch_loss = 0.0
+			# i used for monitoring batch and printing loss, etc.
+			pbar = tqdm(total=len(self.train_loader), desc='Epoch [%i/%i]' % (epoch, self.total_epochs), ncols=140)
 
-				print("Epoch:", str(epoch))
-				epoch_loss = 0.0
-				# i used for monitoring batch and printing loss, etc.
-				i = 0
+			for i, (inputs, labels, miss_chars, input_lens) in enumerate(self.train_loader):
+				if self.use_embedding:
+					inputs = torch.from_numpy(inputs).long() #embeddings should be of dtype long
+				else:
+					inputs = torch.from_numpy(inputs).float()
 
-				while True:
+				#convert to torch tensors
+				labels = torch.from_numpy(labels).float()
+				miss_chars = torch.from_numpy(miss_chars).float()
+				input_lens = torch.from_numpy(input_lens).long()
 
-					i += 1
+				if self.cuda:
+					inputs = inputs.cuda()
+					labels = labels.cuda()
+					miss_chars = miss_chars.cuda()
+					input_lens = input_lens.cuda()
 
-					# Get batch of inputs, labels, missed_chars and lengths along with status (when to end epoch)
-					inputs, labels, miss_chars, input_lens, status = self.train_loader.return_batch()
+				# zero the parameter gradients
+				self.model.optimizer.zero_grad()
+				# forward + backward + optimize
+				outputs = self.model(inputs, input_lens, miss_chars)
+				loss, miss_penalty = self.model.calculate_loss(outputs, labels, input_lens, miss_chars, self.cuda)
+				loss.backward()
 
-					if self.use_embedding:
-						inputs = torch.from_numpy(inputs).long() #embeddings should be of dtype long
-					else:
-						inputs = torch.from_numpy(inputs).float()
+				# clip gradient
+				# torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['grad_clip'])
+				self.model.optimizer.step()
 
-					#convert to torch tensors
-					labels = torch.from_numpy(labels).float()
-					miss_chars = torch.from_numpy(miss_chars).float()
-					input_lens = torch.from_numpy(input_lens).long()
+				# store loss
+				epoch_loss += loss.item()
 
-					if self.cuda:
-						inputs = inputs.cuda()
-						labels = labels.cuda()
-						miss_chars = miss_chars.cuda()
-						input_lens = input_lens.cuda()
+				# # print loss
+				# if i in print_range and epoch == 1:
+				# 	print('After %i batches, Current Loss = %.7f' % (i, epoch_loss / i))
+				# elif i in print_range and epoch > 1:
+				# 	print('After %i batches, Current Loss = %.7f, Avg. Loss = %.7f, Miss Loss = %.7f' % (
+				# 			i, epoch_loss / i, np.mean(np.array([x[0] for x in self.train_losses])), miss_penalty))
 
-					# zero the parameter gradients
-					self.model.optimizer.zero_grad()
-					# forward + backward + optimize
-					outputs = self.model(inputs, input_lens, miss_chars)
-					loss, miss_penalty = self.model.calculate_loss(outputs, labels, input_lens, miss_chars, self.cuda)
-					loss.backward()
+				# update loss
+				if i in print_range and epoch == 1:
+					pbar.set_description('Epoch [%i/%i], Loss=%.4f' % (epoch, self.total_epochs, epoch_loss / i))
+				elif i in print_range and epoch > 1:
+					pbar.set_description('Epoch [%i/%i], Loss=%.4f, Avg.L=%.4f, MissL=%.4f' % (
+						epoch, self.total_epochs, epoch_loss / i, np.mean(np.array([x[0] for x in self.train_losses])), miss_penalty))
+				pbar.update()
 
-					# clip gradient
-					# torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['grad_clip'])
-					self.model.optimizer.step()
-
-					# store loss
-					epoch_loss += loss.item()
-
-					# print loss
-					if i in print_range and epoch == 1:
-						print('After %i batches, Current Loss = %.7f' % (i, epoch_loss / i))
-					elif i in print_range and epoch > 1:
-						print('After %i batches, Current Loss = %.7f, Avg. Loss = %.7f, Miss Loss = %.7f' % (
-								i, epoch_loss / i, np.mean(np.array([x[0] for x in self.train_losses])), miss_penalty))
-
-					# test model periodically
-					if i in test_range:
-						self.test(epoch)
-						self.model.train()
-
-					# Reached end of dataset
-					if status == 1:
-						break
-
-				#refresh dataset i.e. generate a new dataset from corpurs
-				if epoch % self.config['reset_after'] == 0:
-					self.train_loader.refresh_data(epoch)
-
-				#take the last example from the epoch and print the incomplete word, target characters and missed characters
-				random_eg = min(np.random.randint(self.train_loader.batch_size), inputs.shape[0]-1)
-				encoded_to_string(inputs.cpu().numpy()[random_eg], labels.cpu().numpy()[random_eg], miss_chars.cpu().numpy()[random_eg],
-								  input_lens.cpu().numpy()[random_eg], self.train_loader.char_to_id, self.use_embedding)
-
-				# Store tuple of training loss and epoch number
-				self.train_losses.append((epoch_loss / len(self.train_loader), epoch))
-
-				# save model
-				if epoch % self.save_every == 0:
-					self.model.save_model(False, epoch, self.train_losses, self.test_losses,
-										  self.model.rnn_name, self.model.num_layers, self.model.hidden_dim)
-
-				# test every 5 epochs in the beginning and then every fixed no of epochs specified in config file
-				# useful to see how loss stabilises in the beginning
-				if epoch % 5 == 0 and epoch < self.test_every:
+				# test model periodically
+				if i in test_range:
 					self.test(epoch)
 					self.model.train()
-				elif epoch % self.test_every == 0:
-					self.test(epoch)
-					self.model.train()
-				# plot loss and accuracy
-				if epoch % self.plot_every == 0:
-					self.plot_loss_acc(epoch)
 
-			except KeyboardInterrupt:
-				#save model before exiting
-				print("Saving model before quitting")
-				self.model.save_model(False, epoch-1, self.train_losses, self.test_losses,
-									  self.model.rnn_name, self.model.num_layers, self.model.hidden_dim)
-				exit(0)
+			#refresh dataset i.e. generate a new dataset from corpurs
+			if epoch % self.config['reset_after'] == 0:
+				self.train_loader.update_dataset(epoch)
 
+			# #take the last example from the epoch and print the incomplete word, target characters and missed characters
+			# random_eg = min(np.random.randint(self.train_loader.batch_size), inputs.shape[0]-1)
+			# encoded_to_string(inputs.cpu().numpy()[random_eg], labels.cpu().numpy()[random_eg], miss_chars.cpu().numpy()[random_eg],
+			# 				  input_lens.cpu().numpy()[random_eg], self.train_loader.char_to_id, self.use_embedding)
+
+			# Store tuple of training loss and epoch number
+			self.train_losses.append((epoch_loss / len(self.train_loader), epoch))
+
+			# save model
+			if epoch % self.save_every == 0:
+				self.model.save_model(False, epoch, self.train_losses, self.test_losses,
+										self.model.rnn_name, self.model.num_layers, self.model.hidden_dim)
+
+			# test every 5 epochs in the beginning and then every fixed no of epochs specified in config file
+			# useful to see how loss stabilises in the beginning
+			if epoch % 5 == 0 and epoch < self.test_every:
+				self.test(epoch)
+				self.model.train()
+			elif epoch % self.test_every == 0:
+				self.test(epoch)
+				self.model.train()
+			# plot loss and accuracy
+			if epoch % self.plot_every == 0:
+				self.plot_loss_acc(epoch)
+
+			# except KeyboardInterrupt:
+			# 	#save model before exiting
+			# 	print("Saving model before quitting")
+			# 	self.model.save_model(False, epoch-1, self.train_losses, self.test_losses,
+			# 						  self.model.rnn_name, self.model.num_layers, self.model.hidden_dim)
+			# 	exit(0)
 
 	# test model
 	def test(self, epoch=None):
 
 		self.model.eval()
 
-		print("Testing...")
-		print('Total batches:', len(self.test_loader))
 		test_loss = 0
 
 		#generate a new dataset form corpus
-		self.test_loader.refresh_data(epoch)
+		# self.test_loader.refresh_data(epoch)
 
 		with torch.no_grad():
 
-			while True:
-
-				# Get batch of input, labels, missed characters and lengths along with status (when to end epoch)
-				inputs, labels, miss_chars, input_lens, status = self.test_loader.return_batch()
+			for inputs, labels, miss_chars, input_lens in tqdm(self.test_loader, desc='Testing', ncols=140):
 				
 				if self.use_embedding:
 					inputs = torch.from_numpy(inputs).long()
@@ -249,15 +232,11 @@ class dl_model():
 				loss, miss_penalty = self.model.calculate_loss(outputs, labels, input_lens, miss_chars, self.cuda)
 				test_loss += loss.item()
 
-				# Reached end of dataset
-				if status == 1:
-					break
-
 		#take a random example from the epoch and print the incomplete word, target characters and missed characters
 		#min since the last batch may not be of length batch_size
-		random_eg = min(np.random.randint(self.train_loader.batch_size), inputs.shape[0]-1)
-		encoded_to_string(inputs.cpu().numpy()[random_eg], labels.cpu().numpy()[random_eg], miss_chars.cpu().numpy()[random_eg],
-			input_lens.cpu().numpy()[random_eg], self.train_loader.char_to_id, self.use_embedding)
+		# random_eg = min(np.random.randint(self.train_loader.batch_size), inputs.shape[0]-1)
+		# encoded_to_string(inputs.cpu().numpy()[random_eg], labels.cpu().numpy()[random_eg], miss_chars.cpu().numpy()[random_eg],
+		# 	input_lens.cpu().numpy()[random_eg], self.train_loader.char_to_id, self.use_embedding)
 
 		# Average out the losses and edit distance
 		test_loss /= len(self.test_loader)
@@ -324,6 +303,11 @@ class dl_model():
 		input_lens = np.array([len(string)])
 		input_lens= torch.from_numpy(input_lens).long()	
 
+		if self.cuda:
+			inputs = inputs.cuda()
+			miss_encoded = miss_encoded.cuda()
+			input_lens = input_lens.cuda()
+
 		#pass through model
 		output = self.model(inputs, input_lens, miss_encoded).detach().cpu().numpy()[0]
 
@@ -355,10 +339,8 @@ class dl_model():
 		plt.legend()
 		plt.title(self.arch_name)
 
-		filename = self.plots_dir + 'plot_' + self.arch_name + '_' + str(epoch) + '.png'
+		filename = os.path.join(self.plots_dir, 'plot_' + self.arch_name + '_' + str(epoch) + '.png')
 		plt.savefig(filename)
-
-		print("Saved plots")
 
 
 if __name__ == '__main__':

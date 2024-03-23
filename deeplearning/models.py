@@ -26,9 +26,9 @@ class generic_model(nn.Module):
 
         base_path = self.config_file['models']
         if is_best:
-            filename = base_path + 'best_' + '_'.join([rnn_name, str(layers), str(hidden_dim)]) + '.pth'
+            filename = os.path.join(base_path, 'best_' + '_'.join([rnn_name, str(layers), str(hidden_dim)]) + '.pth')
         else:
-            filename = base_path + str(epoch) + '_' + '_'.join([rnn_name, str(layers), str(hidden_dim)]) + '.pth'
+            filename = os.path.join(base_path, str(epoch) + '_' + '_'.join([rnn_name, str(layers), str(hidden_dim)]) + '.pth')
 
         torch.save({
             'epoch': epoch,
@@ -48,15 +48,15 @@ class generic_model(nn.Module):
 
             try:
                 if epoch is None:
-                    filename = self.config_file['models'] + 'best_' + '_'.join(
-                        [rnn_name, str(layers), str(hidden_dim)]) + '.pth'
+                    filename = os.path.join(self.config_file['models'], 'best_' + '_'.join(
+                        [rnn_name, str(layers), str(hidden_dim)]) + '.pth')
                 else:
-                    filename = self.config_file['models'] + str(epoch) + '_'.join(
-                        [rnn_name, str(layers), str(hidden_dim)]) + '.pth'
+                    filename = os.path.join(self.config_file['models'], str(epoch) + '_' + '_'.join(
+                        [rnn_name, str(layers), str(hidden_dim)]) + '.pth')
+                print(filename)
 
                 checkpoint = torch.load(filename, map_location=lambda storage, loc: storage)
                 # load model parameters
-                print("Loading:", filename)
                 self.load_state_dict(checkpoint['model_state_dict'])
                 self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
                 print("Loaded pretrained model from:", filename)
@@ -84,8 +84,8 @@ class generic_model(nn.Module):
                     print("No pretrained model found")
                     return 0, [], []
                 # model trained on the most epochs
-                filename = self.config_file['models'] + str(max(to_check)) + '_' + '_'.join(
-                    [rnn_name, str(layers), str(hidden_dim)]) + '.pth'
+                filename = os.path.join(self.config_file['models'], str(max(to_check)) + '_' + '_'.join(
+                    [rnn_name, str(layers), str(hidden_dim)]) + '.pth')
 
             # load model parameters and return training/testing loss and testing accuracy
             checkpoint = torch.load(filename, map_location=lambda storage, loc: storage)
