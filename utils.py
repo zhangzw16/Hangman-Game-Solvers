@@ -325,6 +325,9 @@ def get_n_gram_prob(n_grams, word, guessed_letters):
             
         #     if sum(gram_5_3_count) != 0:
         #         next_letter_count += (alphas[4] / 3) * (gram_5_3_count / sum(gram_5_3_count))
+        
+        #normalize
+        next_letter_count /= sum(next_letter_count)
 
     return next_letter_count
     

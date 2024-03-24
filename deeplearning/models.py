@@ -120,7 +120,10 @@ class RNN(generic_model):
             self.use_embedding = False
             
         #linear layer after RNN output
-        in_features = config['miss_linear_dim'] + self.hidden_dim*2
+        if self.rnn_name == 'Transformer':
+            in_features = self.embed_dim +config['miss_linear_dim']
+        else:
+            in_features = config['miss_linear_dim'] + self.hidden_dim*2
         mid_features = config['output_mid_features']
         self.linear1_out = nn.Linear(in_features, mid_features)
         self.relu = nn.ReLU()
@@ -131,16 +134,22 @@ class RNN(generic_model):
 
         #declare RNN
         if self.rnn_name == 'LSTM':
-            self.rnn = nn.LSTM(input_size=self.embed_dim if self.use_embedding else self.input_dim, hidden_size=self.hidden_dim, num_layers=self.num_layers,
+            self.encoder = nn.LSTM(input_size=self.embed_dim if self.use_embedding else self.input_dim, hidden_size=self.hidden_dim, num_layers=self.num_layers,
                                dropout=config['dropout'],
                                bidirectional=True, batch_first=True)
-        else:
-            self.rnn = nn.GRU(input_size=self.embed_dim if self.use_embedding else self.input_dim, hidden_size=self.hidden_dim, num_layers=self.num_layers,
+        elif self.rnn_name == 'GRU':
+            self.encoder = nn.GRU(input_size=self.embed_dim if self.use_embedding else self.input_dim, hidden_size=self.hidden_dim, num_layers=self.num_layers,
                               dropout=config['dropout'],
                               bidirectional=True, batch_first=True)
+        elif self.rnn_name == 'Transformer':
+            self.cls_token = nn.Parameter(torch.randn(1, 1, self.embed_dim), requires_grad=True)
+            encoder_layer = nn.TransformerEncoderLayer(d_model=self.embed_dim, nhead=8, dropout=config['dropout'], batch_first=True)
+            self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=self.num_layers)
 
         #optimizer
         self.optimizer = optim.Adam(self.parameters(), lr=config['lr'])
+        # set learning rate decay
+        # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=config['lr_decay'], gamma=config['lr_decay_rate'])
 
     def forward(self, x, x_lens, miss_chars):
         """
@@ -154,14 +163,24 @@ class RNN(generic_model):
             x = self.embedding(x)
             
         batch_size, seq_len, _ = x.size()
-        x = torch.nn.utils.rnn.pack_padded_sequence(x, x_lens.cpu(), batch_first=True, enforce_sorted=False)
-        # now run through RNN
-        output, hidden = self.rnn(x)
-        hidden = hidden.view(self.num_layers, 2, -1, self.hidden_dim)
-        hidden = hidden[-1]
-        hidden = hidden.permute(1, 0, 2)
+        if self.rnn_name != 'Transformer':
+            x = torch.nn.utils.rnn.pack_padded_sequence(x, x_lens.cpu(), batch_first=True, enforce_sorted=False)
+        
+        if self.rnn_name == 'LSTM':
+            output, (hidden, _) = self.encoder(x)
+        elif self.rnn_name == 'GRU':
+            output, hidden = self.encoder(x)
+        elif self.rnn_name == 'Transformer':
+            x = torch.cat((self.cls_token.repeat(batch_size, 1, 1), x), dim=1)
+            hidden = self.encoder(x)
+            hidden = hidden[:, 0, :]
+        
+        if self.rnn_name != 'Transformer':
+            hidden = hidden.view(self.num_layers, 2, -1, self.hidden_dim)
+            hidden = hidden[-1]
+            hidden = hidden.permute(1, 0, 2)
+            hidden = hidden.contiguous().view(hidden.shape[0], -1)
 
-        hidden = hidden.contiguous().view(hidden.shape[0], -1)
         #project miss_chars onto a higher dimension
         miss_chars = self.miss_linear(miss_chars)
         #concatenate RNN output and miss chars

@@ -28,6 +28,6 @@ output_mid_features: 512 #number of neurons in hidden layer after RNN
 miss_linear_dim: 512 #miss chars are projected to this dimension using a simple linear layer
 num_layers: 4 #number of layers in RNN
 dropout: 0.3 #dropout
-batch_size: 4096 #batch size for training and testing
+batch_size: 2048 #batch size for training and testing
 epochs: 200 #total no. of epochs to train
 num_workers: 64

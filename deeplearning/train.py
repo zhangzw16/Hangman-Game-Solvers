@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
+import torch.nn as nn
 from tqdm import tqdm
 
 from .models import RNN
@@ -107,7 +108,7 @@ class dl_model():
 
 			epoch_loss = 0.0
 			# i used for monitoring batch and printing loss, etc.
-			pbar = tqdm(total=len(self.train_loader), desc='Epoch [%i/%i]' % (epoch, self.total_epochs), ncols=140)
+			pbar = tqdm(total=len(self.train_loader), desc='Epoch [%i/%i]' % (epoch, self.total_epochs), ncols=100)
 
 			for i, (inputs, labels, miss_chars, input_lens) in enumerate(self.train_loader):
 				if self.use_embedding:
@@ -208,7 +209,7 @@ class dl_model():
 
 		with torch.no_grad():
 
-			for inputs, labels, miss_chars, input_lens in tqdm(self.test_loader, desc='Testing', ncols=140):
+			for inputs, labels, miss_chars, input_lens in tqdm(self.test_loader, desc='Testing', ncols=100):
 				
 				if self.use_embedding:
 					inputs = torch.from_numpy(inputs).long()
@@ -265,15 +266,15 @@ class dl_model():
 		# a -> 0
 		char_to_id = {chr(97+x): x for x in range(26)}
 		#  "BLANK": 26
-		char_to_id['*'] = len(char_to_id)
+		char_to_id['.'] = len(char_to_id)
 
 		id_to_char = {v:k for k,v in char_to_id.items()}
 
 		#convert string into desired input tensor
 		if self.use_embedding:
-			encoded = np.zeros((len(char_to_id)))
+			encoded = np.zeros((len(string)))
 			for i, c in enumerate(string):
-				if c == '*':
+				if c == '.':
 					encoded[i] = len(id_to_char) - 1 
 				else:
 					encoded[i] = char_to_id[c]
@@ -285,7 +286,7 @@ class dl_model():
 
 			encoded = np.zeros((len(string), len(char_to_id)))
 			for i, c in enumerate(string):
-				if c == '*':
+				if c == '.':
 					encoded[i][len(id_to_char) - 1] = 1
 				else:
 					encoded[i][char_to_id[c]] = 1
@@ -309,14 +310,18 @@ class dl_model():
 			input_lens = input_lens.cuda()
 
 		#pass through model
-		output = self.model(inputs, input_lens, miss_encoded).detach().cpu().numpy()[0]
+		output = self.model(inputs, input_lens, miss_encoded)
+		probs = nn.functional.softmax(output, dim=1)
+		output = output.detach().cpu().numpy()[0]
+		probs = probs.detach().cpu().numpy()[0]
+		# print("NN model output:", probs)
 
 		#sort predictions
 		sorted_predictions = np.argsort(output)[::-1]
 		
 		#we cannnot consider only the argmax since a missed character may also get assigned a high probability
 		#in case of a well-trained model, we shouldn't observe this
-		return [id_to_char[x] for x in sorted_predictions]
+		return [id_to_char[x] for x in sorted_predictions], probs
 
 	def plot_loss_acc(self, epoch):
 		"""
