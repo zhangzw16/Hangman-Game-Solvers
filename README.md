@@ -193,6 +193,16 @@ In terms of computation time, the n-gram models are extremely fast, while the ne
 
 Future work could explore more advanced neural architectures, such as Transformers with attention, as well as techniques for model compression and acceleration to further improve efficiency. Additionally, incorporating more sophisticated language models, such as those trained on larger corpora or using subword units, may help boost accuracy on rare or unseen words.
 
+## Reproducibility
+
+To reproduce the results, you can run the following commands:
+
+```bash
+# to train the GRU model, you need to create model, plots folders first, and have pytorch installed
+python -m deeplearning.train 
+```
+Then you can play the hangman game with the trained model by `hangman_local.ipynb`.
+
 ## References
 
 - codes:
