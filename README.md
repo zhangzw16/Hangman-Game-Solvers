@@ -171,7 +171,7 @@ The table below summarizes the local performance of various models on the Hangma
 |GRU + interval-1| 69.36 | 0:40 | `interval-1` means update $p$ per epoch |
 |LSTM | 67.36 | 0:40 | with interval-1 |
 |Transformer | 40.12 | 0:40 | with interval-1 |
-|***GRU + N-gram*** &#10004;| ***73.06*** | 0:43 | boosting the GRU model with N-gram |
+|***GRU + N-gram*** &#10004;| ***73.06*** | 0:43 | bagging the GRU model with N-gram |
 
 The baseline model, which simply matches the masked word to dictionary words of the same length, achieves a score of 21.04%. Relaxing the search condition to match against words of all lengths (re.search) improves the score to 38.16%, at the cost of increased computation time.
 
@@ -181,9 +181,37 @@ N-gram models show significant improvements, with scores increasing as higher-or
 
 For the neural network models, the GRU architecture outperforms LSTM and Transformer. The GRU model can achieve accuracy close to the performance of the N-gram method. The advantage of the RNN model is that it can model longer-distance dependencies and capture more semantic information. Updating the masking probability $p$ per epoch (interval-1) further boosts the GRU's performance to 69.36%.
 
-The best overall model is a combination of the GRU and n-gram models, achieving an impressive score of 73.06%. This suggests that the GRU is able to capture long-range dependencies and semantic information, while the n-gram component provides useful statistical information about letter co-occurrences.
+The best overall model is a bagging model of the GRU and N-gram, achieving an impressive score of 73.06%. This suggests that the GRU is able to capture long-range dependencies and semantic information, while the n-gram component provides useful statistical information about letter co-occurrences.
 
 In terms of computation time, the n-gram models are extremely fast, while the neural network models take longer to train and evaluate. However, the GRU + N-gram model strikes a good balance between accuracy and speed.
+
+
+### The Limitation of Accuracy
+
+To explore the upper limit of accuracy for guessing letters in the Hangman game, I first implemented a random guessing agent. This agent randomly selects a letter from a-z that hasn't been guessed yet with equal probability. I analyzed the relationship between its game accuracy, word length, and the maximum number of wrong guesses allowed. This random agent should be considered as a lower bound - any reasonable strategy should perform better than random guessing. ***Based on the results, we can see that the accuracy is highest in the upper right corner of the graph, indicating that accuracy increases when the word length is shorter and the number of random guesses allowed is higher.***
+
+| random guess on random datasets  |  optimal guess on random datasets |
+|:-------------------------:|:-------------------------:
+|![](images/random_guess.png)  |  ![](images/max_10k_random_generate.png) |
+
+<center>
+Both words length and max guesses range from 1 to 10. 
+</center>
+<br>
+
+Next, I designed an "optimal" strategy that assumes access to the full test set of words. At each game state, this agent matches all possible words in the set that fit the current pattern, and outputs the letter with the highest probability based on the matching words. This should represent a theoretical upper bound on accuracy, since it assumes knowledge of the full test set and that words are randomly selected from this set. ***The results of this strategy differ from random guessing - accuracy increases with longer word lengths. This is because longer words lead to more precise pattern matching, making it less likely to encounter similar words and thus easier to correctly match the result.***
+
+When testing on a corpus of 250,000 words, this optimal strategy achieved an accuracy of 96%. This suggests that if the test set is identical to the training data, the accuracy limit should be quite high. 
+
+However, it's important to note that if the test set and training set are two disjoint sets, the upper bound on accuracy would be significantly lower. I did not provide an analysis for this more realistic scenario where the model is evaluated on an unseen test set.
+
+In summary:
+- A random guessing strategy provides a lower bound on expected accuracy
+- An optimal strategy with access to the test set gives a theoretical upper bound, which is quite high (96% in one experiment) 
+- However, accuracy will be lower, potentially significantly, when the model is evaluated on a separate unseen test set
+- Key factors influencing accuracy are the word length, max allowed incorrect guesses, and critically, the overlap between the training and test word sets
+
+The true accuracy limit for a real-world Hangman solver lies somewhere between the random and optimal bounds, and depends on the ability to generalize patterns from a training set to new unseen words. Further experiments on separate train/test splits would help establish a more realistic accuracy upper bound, left as future works.
 
 
 ## Conclusion and Future Work
@@ -191,7 +219,8 @@ In terms of computation time, the n-gram models are extremely fast, while the ne
 > [!Important]
 > Overall, these results demonstrate the effectiveness of using both statistical language models (n-grams) and deep learning approaches (GRUs) for the Hangman game. The n-gram models provide a strong baseline by leveraging letter frequency and co-occurrence statistics, while the GRU is able to model more complex patterns and long-range dependencies. Combining these two approaches leads to the best performance.
 
-Future work could explore more advanced neural architectures, such as Transformers with attention, as well as techniques for model compression and acceleration to further improve efficiency. Additionally, incorporating more sophisticated language models, such as those trained on larger corpora or using subword units, may help boost accuracy on rare or unseen words.
+Future work could explore the more accurate uppper bound for train/test splited hangman games. Additionally, incorporating more sophisticated language models, such as those trained on larger corpora or using subword units, may help boost accuracy on rare or unseen words.
+
 
 ## Reproducibility
 
